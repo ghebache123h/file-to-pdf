@@ -6,10 +6,23 @@ from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
+import mimetypes
 
 app = Flask(__name__)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'txt'}
+MIME_TO_EXTENSION = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tiff',
+    'text/plain': 'txt',
+}
+
+def get_extension_from_mime(mime_type):
+    return MIME_TO_EXTENSION.get(mime_type)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -22,13 +35,12 @@ def convert_image_to_pdf(image_data):
         width, height = letter
         img_width, img_height = img.size
 
-        # Calculate aspect ratio to fit within the PDF page
         aspect = img_width / float(img_height)
         if aspect > width / height:
-            new_width = width - 50  # Add some margin
+            new_width = width - 50
             new_height = new_width / aspect
         else:
-            new_height = height - 50 # Add some margin
+            new_height = height - 50
             new_width = new_height * aspect
 
         x = (width - new_width) / 2
@@ -39,6 +51,7 @@ def convert_image_to_pdf(image_data):
         buffer.seek(0)
         return buffer
     except Exception as e:
+        print(f"Error converting image: {e}")
         return None
 
 def convert_text_to_pdf(text_data):
@@ -53,6 +66,7 @@ def convert_text_to_pdf(text_data):
         buffer.seek(0)
         return buffer
     except Exception as e:
+        print(f"Error converting text: {e}")
         return None
 
 @app.route('/convert_to_pdf', methods=['POST'])
@@ -61,9 +75,20 @@ def convert_to_pdf():
         return "No file part in the request", 400
     file = request.files['file']
     if file.filename == '':
-        return "No selected file", 400
-    if file:
+        # Try to get extension from Content-Type
+        mime_type = request.headers.get('Content-Type')
+        if mime_type:
+            possible_extension = get_extension_from_mime(mime_type.split(';')[0].lower())
+            if possible_extension and possible_extension in ALLOWED_EXTENSIONS:
+                file_extension = possible_extension
+            else:
+                return "Could not determine file type from Content-Type", 400
+        else:
+            return "No filename and no Content-Type provided", 400
+    else:
         file_extension = file.filename.rsplit('.', 1)[1].lower()
+
+    if file:
         file_data = file.read()
 
         if file_extension in {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff'}:
